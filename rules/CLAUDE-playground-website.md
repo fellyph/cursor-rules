@@ -816,9 +816,371 @@ npx nx typecheck playground-website
 
 ### Testing
 
+The website package uses **Playwright** for end-to-end (E2E) testing. Tests are located in `playwright/e2e/` and verify UI interactions, blueprint execution, and browser behavior.
+
+#### Running Tests
+
 ```bash
+# Run all E2E tests
+npx nx run playground-website:e2e:playwright
+
+# Run with interactive UI (recommended for development)
+npx nx run playground-website:e2e:playwright --ui
+
+# Run specific browser
+npx nx run playground-website:e2e:playwright --project=chromium
+npx nx run playground-website:e2e:playwright --project=firefox
+
+# Run specific test file
+npx nx run playground-website:e2e:playwright blueprints
+
+# Debug mode (step through tests)
+npx nx run playground-website:e2e:playwright --debug
+
+# Run unit tests (Vitest)
 npx nx test playground-website
 ```
+
+#### Test Structure
+
+**Test Location**: `playwright/e2e/`
+
+Test files:
+- `query-api.spec.ts` - URL parameter handling (14 tests)
+- `blueprints.spec.ts` - Blueprint execution (30+ tests)
+- `website-ui.spec.ts` - UI interactions (20+ tests)
+- `client.spec.ts` - Client API (1 test)
+- `deployment.spec.ts` - Service worker/deployment (4 tests)
+
+**Configuration**:
+- `playwright/playwright.config.ts` - Development config
+- `playwright/playwright.ci.config.ts` - CI-specific config
+
+**Fixtures & Utilities**:
+- `playwright/playground-fixtures.ts` - Custom fixtures for WordPress/website access
+- `playwright/website-page.ts` - Page object model for website interactions
+- `playwright/version-switching-server.ts` - Test utility server for deployment tests
+
+#### Custom Fixtures
+
+Tests extend Playwright with WordPress-specific fixtures:
+
+```typescript
+import { test, expect } from '../playground-fixtures';
+
+test('my test', async ({ website, wordpress, page }) => {
+  // website: WebsitePage - page object for website UI
+  // wordpress: FrameLocator - access WordPress iframe content
+  // page: Page - standard Playwright page
+});
+```
+
+#### Page Object Model: `WebsitePage`
+
+Helper class for common website interactions:
+
+```typescript
+// Navigation with auto-wait for iframes
+await website.goto('/?url=/wp-admin/');
+
+// WordPress iframe access
+const wp = website.wordpress();
+await expect(wp.locator('body')).toContainText('Dashboard');
+
+// Site manager
+await website.ensureSiteManagerIsOpen();
+await website.ensureSiteManagerIsClosed();
+
+// Get site title
+const title = await website.getSiteTitle();
+```
+
+#### Writing Tests
+
+**Basic test structure**:
+
+```typescript
+import { test, expect } from '../playground-fixtures';
+
+test('describe test behavior', async ({ website, wordpress }) => {
+  // 1. Setup - Navigate to page
+  await website.goto('/?url=/wp-admin/');
+
+  // 2. Action - Interact with UI
+  await website.page.getByRole('button', { name: 'Save' }).click();
+
+  // 3. Assert - Verify results
+  await expect(website.page.getByRole('dialog')).toBeVisible();
+});
+```
+
+**Blueprint testing**:
+
+```typescript
+import type { Blueprint } from '@wp-playground/blueprints';
+
+test('blueprint installs plugin', async ({ website, wordpress }) => {
+  const blueprint: Blueprint = {
+    landingPage: '/wp-admin/',
+    steps: [
+      { step: 'login' },
+      { step: 'installPlugin', pluginZipFile: { resource: 'wordpress.org/plugins', slug: 'gutenberg' } }
+    ],
+  };
+
+  await website.goto(`/#${JSON.stringify(blueprint)}`);
+  await expect(wordpress.locator('body')).toContainText('Plugins');
+});
+```
+
+**Modal testing**:
+
+```typescript
+test('save modal appears', async ({ website }) => {
+  await website.goto('/');
+  await website.ensureSiteManagerIsOpen();
+
+  await website.page.getByRole('button', { name: 'Save' }).click();
+
+  const dialog = website.page.getByRole('dialog', { name: 'Save Playground' });
+  await expect(dialog).toBeVisible();
+
+  const nameInput = dialog.getByLabel('Playground name');
+  await expect(nameInput).toBeFocused();
+
+  // Close with Cancel
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).not.toBeVisible();
+});
+```
+
+**Browser-specific tests**:
+
+```typescript
+test('test name', async ({ website, browserName }) => {
+  test.skip(
+    browserName === 'webkit',
+    'WebKit has issues with this feature - see issue #2475'
+  );
+
+  // Test code (will skip on WebKit)
+});
+```
+
+#### Common Test Patterns
+
+**1. Nested Iframe Navigation**:
+```typescript
+// Access WordPress content
+await expect(wordpress.locator('body')).toContainText('Dashboard');
+await expect(wordpress.locator('h1')).toContainText('Dashboard');
+```
+
+**2. Modal Interactions**:
+```typescript
+// Open modal
+await page.getByRole('button', { name: 'Save' }).click();
+
+// Get dialog
+const dialog = page.getByRole('dialog', { name: 'Save Playground' });
+await expect(dialog).toBeVisible();
+
+// Fill form
+await dialog.getByLabel('Playground name').fill('My Site');
+
+// Submit
+await dialog.getByRole('button', { name: 'Save' }).click();
+
+// Verify closed
+await expect(dialog).not.toBeVisible();
+```
+
+**3. State Persistence**:
+```typescript
+// Make changes
+await website.page.getByLabel('PHP version').selectOption('8.0');
+await website.page.getByText('Apply Settings & Reset Playground').click();
+
+// Reload page
+await website.page.reload();
+
+// Verify persistence
+await website.ensureSiteManagerIsOpen();
+await expect(website.page.getByLabel('PHP version')).toHaveValue('8.0');
+```
+
+**4. Page Evaluation (Access Window/DOM)**:
+```typescript
+const location = await wordpress
+  .locator('body')
+  .evaluate((body) => body.ownerDocument.location.href);
+expect(location).toContain('/wp-admin/');
+```
+
+**5. Screenshot Testing**:
+```typescript
+await expect(page).toHaveScreenshot('website-ui.png', {
+  maxDiffPixels: 4000, // Allow small differences
+});
+```
+
+#### Assertion Styles
+
+Use Playwright's built-in assertions:
+
+```typescript
+// Visibility
+await expect(element).toBeVisible();
+await expect(element).not.toBeVisible();
+
+// Content
+await expect(element).toContainText('text');
+await expect(element).toHaveText('exact text');
+
+// Form values
+await expect(input).toHaveValue('value');
+await expect(checkbox).toBeChecked();
+await expect(select).toHaveValue('option-value');
+
+// Focus
+await expect(input).toBeFocused();
+
+// State
+await expect(button).toBeEnabled();
+await expect(button).toBeDisabled();
+
+// Count
+await expect(page.getByRole('listitem')).toHaveCount(5);
+```
+
+#### Test Coverage
+
+**Well-tested areas**:
+- ✅ URL parameter handling (PHP/WP versions, login, networking)
+- ✅ Blueprint execution (plugins, multisite, permalinks)
+- ✅ UI interactions (modals, site manager, save/rename)
+- ✅ Version switching (PHP 7.2-8.4, WordPress 6.3-6.8)
+- ✅ Site persistence (OPFS storage)
+- ✅ Service worker offline mode
+- ✅ Network features (curl, file_get_contents, CORS proxy)
+
+**Areas needing more tests**:
+- ⚠️ Accessibility (a11y) testing
+- ⚠️ Mobile viewports (currently commented out)
+- ⚠️ Keyboard navigation
+- ⚠️ Error recovery and retry logic
+- ⚠️ Performance/load testing
+- ⚠️ Concurrent operations
+- ⚠️ Safari/WebKit (many tests skipped due to flakiness)
+- ⚠️ Long-running sessions (30+ minutes)
+
+#### Browser Support
+
+**Chromium**: ✅ Full support (85%+ tests pass)
+**Firefox**: ✅ Most tests (some skipped for flakiness)
+**WebKit/Safari**: ⚠️ Limited (many tests skipped - see issue #2475)
+**Mobile**: ❌ Not tested (viewport configs commented out)
+
+#### Testing Best Practices
+
+**DO**:
+- ✅ Use accessibility selectors (`getByRole`, `getByLabel`, `getByText`)
+- ✅ Use custom fixtures (`website`, `wordpress`) for WordPress-specific logic
+- ✅ Use page object model (`WebsitePage`) for common interactions
+- ✅ Skip tests with clear reasons: `test.skip(condition, 'reason with issue #')`
+- ✅ Use explicit waits for async operations
+- ✅ Test each feature in isolation
+- ✅ Use descriptive test names
+- ✅ Group related tests with `test.describe()`
+
+**DON'T**:
+- ❌ Use hardcoded waits (`page.waitForTimeout(1000)`)
+- ❌ Use CSS selectors when accessibility selectors work
+- ❌ Access other component's internals
+- ❌ Test implementation details (test behavior, not internals)
+- ❌ Share state between tests
+- ❌ Rely on test execution order
+- ❌ Test third-party code (WordPress core, plugins)
+
+#### Example: Adding a New Test
+
+```typescript
+import { test, expect } from '../playground-fixtures';
+import type { Blueprint } from '@wp-playground/blueprints';
+
+test.describe('My Feature', () => {
+  test('should do something', async ({ website, wordpress }) => {
+    // Setup
+    const blueprint: Blueprint = {
+      landingPage: '/wp-admin/',
+      steps: [{ step: 'login' }],
+    };
+
+    await website.goto(`/#${JSON.stringify(blueprint)}`);
+
+    // Action
+    await website.ensureSiteManagerIsOpen();
+    await website.page.getByRole('button', { name: 'My Button' }).click();
+
+    // Assert
+    await expect(wordpress.locator('body')).toContainText('Expected Text');
+    await expect(website.page.getByRole('dialog')).toBeVisible();
+  });
+
+  test('should handle errors', async ({ website, browserName }) => {
+    // Skip on problematic browsers
+    test.skip(browserName === 'webkit', 'Flaky on WebKit - issue #XXXX');
+
+    // Test error handling
+    await website.goto('/?url=/nonexistent');
+    await expect(website.page.getByText('Error')).toBeVisible();
+  });
+});
+```
+
+#### Debugging Tests
+
+**Interactive UI mode** (recommended):
+```bash
+npx nx run playground-website:e2e:playwright --ui
+```
+
+**Debug mode** (step through tests):
+```bash
+npx nx run playground-website:e2e:playwright --debug
+```
+
+**Playwright Inspector** (explore selectors):
+```bash
+npx playwright open http://127.0.0.1:5400/website-server/
+```
+
+**View test report**:
+```bash
+npx playwright show-report
+```
+
+**Headed mode** (see browser):
+```bash
+npx nx run playground-website:e2e:playwright --headed
+```
+
+#### CI Testing
+
+Tests run automatically on pull requests using `playwright.ci.config.ts`:
+
+- Base URL: `http://127.0.0.1/`
+- Runs both CORS proxy and preview build
+- WebKit tests disabled (random failures)
+- 3 retries per test
+- HTML report generated
+
+#### Resources
+
+- [Playwright Documentation](https://playwright.dev/)
+- [Playwright Best Practices](https://playwright.dev/docs/best-practices)
+- [Playwright Locators](https://playwright.dev/docs/locators)
+- [Playwright Assertions](https://playwright.dev/docs/test-assertions)
 
 ### Linting
 
