@@ -1,6 +1,6 @@
 ---
 name: wordpress-playground-blueprints
-description: Guide for creating WordPress Playground Blueprint JSON files that configure WordPress instances with plugins, themes, content, and settings. Use when building Blueprint files, configuring WordPress Playground environments, or troubleshooting Blueprint errors. All blueprints must conform to https://playground.wordpress.net/blueprint-schema.json
+description: Guide for creating WordPress Playground Blueprint JSON files and executing WP-CLI commands. Use when building Blueprint files, automating WordPress/WooCommerce management via CLI, configuring WordPress Playground environments, or troubleshooting. Covers blueprint creation, WP-CLI commands, and WooCommerce CLI operations. All blueprints must conform to https://playground.wordpress.net/blueprint-schema.json
 ---
 
 # WordPress Playground Blueprints
@@ -1069,20 +1069,7 @@ Access-Control-Allow-Origin: *
 https://playground.wordpress.net/?blueprint-url=https://example.com/my-bundle.zip
 ```
 
-## Advanced Features
-
-### WP-CLI Integration
-```json
-{
-  "extraLibraries": ["wp-cli"],
-  "steps": [
-    {
-      "step": "wp-cli",
-      "command": "plugin list --status=active --format=json"
-    }
-  ]
-}
-```
+## Advanced Blueprint Features
 
 ### Multisite Setup
 ```json
@@ -1117,6 +1104,331 @@ https://playground.wordpress.net/?blueprint-url=https://example.com/my-bundle.zi
   }
 }
 ```
+
+## WP-CLI Integration
+
+WP-CLI is a command-line interface for WordPress that enables powerful automation and management tasks. Use WP-CLI both in blueprints and directly for WordPress/WooCommerce operations.
+
+### Enabling WP-CLI in Blueprints
+
+To use WP-CLI commands in blueprints, load the wp-cli library:
+
+```json
+{
+  "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+  "extraLibraries": ["wp-cli"],
+  "steps": [
+    {
+      "step": "wp-cli",
+      "command": "plugin list --status=active"
+    }
+  ]
+}
+```
+
+### Essential WP-CLI Commands
+
+#### Core WordPress Management
+```bash
+# Download WordPress
+wp core download
+
+# Install WordPress
+wp core install --url=example.com --title="Site Title" --admin_user=admin --admin_password=pass --admin_email=admin@example.com
+
+# Update WordPress
+wp core update
+```
+
+#### Plugin Management
+```bash
+# List plugins
+wp plugin list
+wp plugin list --status=active --format=json
+
+# Install and activate
+wp plugin install akismet --activate
+wp plugin install woocommerce --activate
+
+# Update all plugins
+wp plugin update --all
+```
+
+#### Theme Management
+```bash
+# List themes
+wp theme list
+
+# Install and activate
+wp theme install twentytwentyfour --activate
+
+# Update themes
+wp theme update --all
+```
+
+#### Database Operations
+```bash
+# Create database
+wp db create
+
+# Export database
+wp db export backup.sql
+
+# Search and replace
+wp search-replace 'http://oldsite.com' 'https://newsite.com'
+wp search-replace 'old' 'new' --dry-run
+```
+
+#### User Management
+```bash
+# Create user
+wp user create bob bob@example.com --role=author
+
+# List users
+wp user list --role=administrator
+
+# Update password
+wp user update 1 --user_pass=newpassword
+```
+
+#### Site Options
+```bash
+# Get option
+wp option get blogname
+
+# Update option
+wp option update blogname "My New Site"
+```
+
+### WooCommerce CLI Commands
+
+All WooCommerce commands require `--user=<id>` parameter for authentication.
+
+#### Product Management
+```bash
+# List products
+wp wc product list --user=1
+wp wc product list --user=1 --status=publish --format=json
+
+# Create product
+wp wc product create --user=1 \
+  --name="T-Shirt" \
+  --type=simple \
+  --regular_price=19.99 \
+  --sku=TSHIRT001
+
+# Update product
+wp wc product update 123 --user=1 --regular_price=24.99
+
+# Delete product
+wp wc product delete 123 --user=1 --force
+```
+
+#### Customer Management
+```bash
+# Create customer
+wp wc customer create --user=1 \
+  --email=customer@example.com \
+  --first_name=John \
+  --last_name=Doe \
+  --username=johndoe \
+  --password=securepass
+
+# List customers
+wp wc customer list --user=1 --format=json
+
+# Update customer
+wp wc customer update 17 --user=1 --email=newemail@example.com
+```
+
+#### Order Management
+```bash
+# List orders
+wp wc shop_order list --user=1
+wp wc shop_order list --user=1 --status=processing
+
+# Update order status
+wp wc shop_order update 355 --user=1 --status=completed
+
+# Add order note
+wp wc order_note create 355 --user=1 \
+  --note="Package shipped" \
+  --customer_note=true
+```
+
+#### Coupon Management
+```bash
+# Create coupon
+wp wc shop_coupon create --user=1 \
+  --code=SUMMER20 \
+  --discount_type=percent \
+  --amount=20 \
+  --description="Summer sale"
+
+# Update coupon
+wp wc shop_coupon update 45 --user=1 --amount=25
+
+# List coupons
+wp wc shop_coupon list --user=1
+```
+
+### Using WP-CLI in Blueprints
+
+#### Basic WP-CLI Step
+```json
+{
+  "step": "wp-cli",
+  "command": "plugin list --status=active"
+}
+```
+
+#### Complex Blueprint with WP-CLI
+```json
+{
+  "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+  "extraLibraries": ["wp-cli"],
+  "features": {
+    "networking": true
+  },
+  "steps": [
+    {
+      "step": "installPlugin",
+      "pluginData": {
+        "resource": "wordpress.org/plugins",
+        "slug": "woocommerce"
+      },
+      "options": {
+        "activate": true
+      }
+    },
+    {
+      "step": "wp-cli",
+      "command": "wc product create --user=1 --name='Demo Product' --type=simple --regular_price=29.99"
+    },
+    {
+      "step": "wp-cli",
+      "command": "wc product_cat create --user=1 --name='Electronics'"
+    },
+    {
+      "step": "wp-cli",
+      "command": "wc shop_coupon create --user=1 --code=WELCOME10 --discount_type=percent --amount=10"
+    }
+  ]
+}
+```
+
+#### Automating Site Setup
+```json
+{
+  "extraLibraries": ["wp-cli"],
+  "steps": [
+    {
+      "step": "wp-cli",
+      "command": "option update blogname 'My Awesome Store'"
+    },
+    {
+      "step": "wp-cli",
+      "command": "option update blogdescription 'Best products online'"
+    },
+    {
+      "step": "wp-cli",
+      "command": "plugin install woocommerce --activate"
+    },
+    {
+      "step": "wp-cli",
+      "command": "theme install storefront --activate"
+    }
+  ]
+}
+```
+
+### WP-CLI Output Formats
+
+All WP-CLI commands support multiple output formats:
+
+```bash
+--format=table   # Default table view
+--format=json    # JSON output
+--format=csv     # CSV output
+--format=yaml    # YAML output
+--format=ids     # Space-separated IDs
+--format=count   # Count only
+```
+
+### Common WP-CLI Workflows
+
+#### Fresh WordPress Install
+```bash
+wp core download
+wp config create --dbname=wpdb --dbuser=root --dbpass=password
+wp db create
+wp core install --url=localhost --title="My Site" --admin_user=admin --admin_email=admin@example.com
+```
+
+#### Site Migration
+```bash
+wp db export backup.sql
+wp search-replace 'http://oldsite.com' 'https://newsite.com' --dry-run
+wp search-replace 'http://oldsite.com' 'https://newsite.com'
+wp cache flush
+```
+
+#### Bulk Operations
+```bash
+wp plugin update --all
+wp theme update --all
+wp media regenerate --yes
+```
+
+### WP-CLI Troubleshooting
+
+#### Database Connection Issues
+- Ensure SQLite integration is installed in Playground: `"plugins": ["sqlite-database-integration"]`
+- For traditional WordPress, verify wp-config.php credentials
+
+#### Permission Issues
+- Always run as appropriate user (not root)
+- Use `--user=<id>` for WooCommerce commands
+
+#### Path Issues
+- Use `--path` to specify WordPress directory
+- In Playground, paths start with `/wordpress/`
+
+### Reference Files for Detailed Commands
+
+For comprehensive command references, see:
+
+- **references/wp-cli-commands.md** - Complete WP-CLI command reference with examples
+- **references/woocommerce-cli-commands.md** - WooCommerce CLI commands and workflows
+- **references/wp-cli-troubleshooting.md** - Common issues and solutions
+
+Read these references when you need:
+- Detailed syntax for specific commands
+- Advanced usage patterns
+- Troubleshooting specific errors
+- Complete list of available options
+
+### Global WP-CLI Parameters
+
+These work with all commands:
+
+- `--path=<path>` - Path to WordPress installation
+- `--url=<url>` - URL for multisite subsites
+- `--user=<id>` - Run as specific user (required for WooCommerce)
+- `--skip-plugins` - Skip loading plugins
+- `--skip-themes` - Skip loading themes
+- `--quiet` - Suppress output
+- `--debug` - Show debugging output
+
+### Best Practices for WP-CLI
+
+1. **Test with --dry-run** when available (e.g., search-replace)
+2. **Backup before major operations** (`wp db export`)
+3. **Use --format=json** for scripting and automation
+4. **Check command help** (`wp help <command>`)
+5. **Enable debugging** (`wp --debug <command>`)
+6. **Use appropriate user context** (`--user=1` for WooCommerce)
+7. **Verify environment** (`wp --info`)
 
 ## Schema Validation
 
